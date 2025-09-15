@@ -10,7 +10,7 @@
 
 loon:
 [Script]
-http-request ^https:\/\/kohcamp\.qq\.com\/operation\/action\/tasklist script-path=https://gist.githubusercontent.com/Sliverkiss/041df92d35c35038fa2940c9a5a38ff5/raw/wzyd.js, timeout=10, tag=王者营地获取ck
+http-request ^https:\/\/kohcamp\.qq\.com\/operation\/action\/signin script-path=https://gist.githubusercontent.com/Sliverkiss/041df92d35c35038fa2940c9a5a38ff5/raw/wzyd.js, timeout=10, tag=王者营地获取ck
 
 [MITM]
 hostname=kohcamp.qq.com
