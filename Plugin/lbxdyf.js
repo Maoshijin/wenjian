@@ -3,10 +3,10 @@
  * 解决了 Task 模式下因异步作用域问题导致的 'A JavaScript exception occurred' 报错。
  * 所有执行逻辑已被包装在立即执行的 async 函数中。
 [rewrite_local]
-^https:\/\/mall\.lbxcn\.com\/mall\/scc-point-member\/crm-api\/bonus\/sign-in url script-request-body lbxdyf.js
+^https:\/\/mall\.lbxcn\.com\/mall\/scc-point-member\/crm-api\/bonus\/sign-in url script-request-body https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/Plugin/lbxdyf.js
 
 [task_local]
-1 0 * * * lbxdyf.js, tag=老百姓大药房签到, enabled=true
+1 0 * * * https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/Plugin/lbxdyf.js, tag=老百姓大药房签到, enabled=true
 
 [MITM]
 hostname = mall.lbxcn.com
