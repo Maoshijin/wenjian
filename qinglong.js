@@ -18,6 +18,19 @@ http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-pat
 
 [MITM]
 hostname = jjw.jingjiu.com
+
+---------------------------
+BoxJs 全局变量配置 (Key: jyj_QL):
+{
+  "host": "http://192.168.1.93:5700",
+  "clientId": "7MRlItXTD-cR",
+  "secret": "kB7DIXTCw-3Ons8Ai7onrivl",
+  "envName": "jyj_data",
+  "taskName": "jyj.js",
+  "autoRunTask": true
+}
+---------------------------
+
 */
 
 const $ = new Env("劲酒Token同步青龙");
