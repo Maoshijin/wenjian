@@ -28,18 +28,6 @@ BoxJs 全局变量配置 (Key: jyj_QL):
   "autoRunTask": true
 }
 ---------------------------
-/*
-脚本名称：劲酒Token同步青龙 (修复版)
-脚本作者：Gemini
-适用平台：Quantumult X / Loon / Surge
-功能说明：抓取劲酒Authorization并同步至青龙面板环境变量
-更新日志：修复 $.http is not a function 报错，改用原生请求封装
-
-[rewrite_local]
-^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/xxx/jingjiu_sync_ql.js
-
-[Script]
-http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/xxx/jingjiu_sync_ql.js, tag=劲酒同步青龙, enable=true
 
 */
 
