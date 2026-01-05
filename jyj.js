@@ -7,11 +7,11 @@
 
 [rewrite_local]
 # Quantumult X
-^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/xxx/jyj.js
+^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/jyj.js
 
 [Script]
 # Loon
-http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/xxx/jyj.js, tag=劲酒Token, enable=true
+http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/jyj.js, tag=劲酒Token, enable=true
 
 */
 
