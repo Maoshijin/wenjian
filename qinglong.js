@@ -1,0 +1,238 @@
+/*
+脚本名称：劲酒Token同步青龙 (智能备注+精准去重版)
+脚本作者：Gemini
+功能说明：
+1. 抓取劲酒Token并同步至青龙。
+2. 修复部分字符变动不更新的Bug（改为精准匹配）。
+3. 自动解码Token提取ID，更新青龙备注（例如：账号[1873]）。
+
+[rewrite_local]
+^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/xxx/jingjiu_sync_ql.js
+
+[Script]
+http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/xxx/jingjiu_sync_ql.js, tag=劲酒同步青龙, enable=true
+
+*/
+
+const $ = new Env("劲酒Token同步青龙");
+
+// 1. 获取 BoxJs 中的青龙配置
+let QL = ($.isNode() ? process.env.jyj_QL : $.getjson("jyj_QL")) || {};
+
+// ---------------------- 主逻辑区 -----------------------------------
+
+async function getAuthorization() {
+    if (typeof $request === "undefined") return null;
+    
+    const headers = ObjectKeys2LowerCase($request.headers);
+    const rawAuth = headers['authorization'];
+    
+    if (!rawAuth) return null;
+
+    // 清洗数据：去除 "Authorization: " 前缀
+    const token = rawAuth.replace(/^Authorization:\s*/i, "");
+    
+    // 简单的日志摘要
+    $.log(`🔍 捕获 Token (尾号): ...${token.slice(-6)}`);
+    
+    return token;
+}
+
+// JWT 解码辅助函数：提取唯一标识作为备注
+function getRemarkFromToken(token) {
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) return "未知账号";
+        
+        // Base64 解码 payload
+        const payloadStr = decodeBase64(parts[1]);
+        const payload = JSON.parse(payloadStr);
+        
+        // 劲酒 Token 的 payload 里通常有个 "JYJwx " 字段存放 UUID
+        // 格式示例: {"JYJwx ": "4dce451a-4689-47a2-943b-7bc422c11873"}
+        const uuid = payload["JYJwx "] || payload["sub"] || "Unknown";
+        
+        // 截取最后 4 位作为简短标识
+        if (uuid.length > 4) {
+            return `账号[${uuid.slice(-4)}]`;
+        }
+        return uuid;
+    } catch (e) {
+        return "新账号";
+    }
+}
+
+async function main() {
+    try {
+        // 校验配置
+        QL = typeof QL === "string" ? JSON.parse(QL) : QL;
+        if (!QL.host || !QL.clientId || !QL.secret) {
+            throw new Error(`⛔️ 请在 BoxJs 设置 QL 配置 (Key: jyj_QL)`);
+        }
+        if (!QL.envName) throw new Error(`⛔️ 请设置环境变量名 envName`);
+
+        const newToken = await getAuthorization();
+        if (!newToken) return;
+
+        // 初始化青龙连接
+        const ql = new QingLong(QL.host, QL.clientId, QL.secret);
+        $.log("🔗 连接青龙面板...");
+        await ql.checkLogin();
+
+        // 获取目标环境变量
+        await ql.getEnvs();
+        const envs = ql.selectEnvByName(QL.envName);
+        
+        let targetEnv = envs[0]; 
+        let finalValue = "";
+        let finalRemark = "";
+
+        if (targetEnv) {
+            // --- 场景 A: 变量已存在，执行精准去重与合并 ---
+            const oldVal = targetEnv.value;
+            // 使用 # 分割成数组，进行精准比对
+            let tokens = oldVal.split('#').filter(t => t && t.length > 10); // 过滤空值或过短的垃圾数据
+            
+            // 检查新 Token 是否已完全存在于数组中
+            if (tokens.includes(newToken)) {
+                $.log(`⚠️ Token 精准匹配已存在，跳过更新`);
+                return; 
+            }
+
+            // 追加新 Token
+            $.log(`➕ 新 Token，正在追加...`);
+            tokens.push(newToken);
+            finalValue = tokens.join('#');
+            
+            // --- 生成智能备注 ---
+            // 遍历所有 Token，生成类似 "账号[1873] & 账号[9999]" 的备注
+            const remarkList = tokens.map(t => getRemarkFromToken(t));
+            finalRemark = `自动同步: ${remarkList.join(' & ')}`;
+
+            // 更新变量
+            await ql.updateEnv({ 
+                value: finalValue, 
+                name: QL.envName, 
+                id: targetEnv.id, 
+                remarks: finalRemark // 更新备注字段
+            });
+
+        } else {
+            // --- 场景 B: 变量不存在，新建 ---
+            $.log(`🆕 变量不存在，正在创建...`);
+            finalValue = newToken;
+            finalRemark = `自动同步: ${getRemarkFromToken(newToken)}`;
+            
+            await ql.addEnv([{ 
+                value: finalValue, 
+                name: QL.envName, 
+                remarks: finalRemark 
+            }]);
+        }
+
+        $.msg($.name, "🎉 同步成功", `备注已更新: ${finalRemark}`);
+
+        // --- 自动运行任务 ---
+        if (QL.taskName && (QL.autoRunTask === true || QL.autoRunTask === "true")) {
+            const task = await ql.getTask(QL.taskName);
+            if (task) {
+                await ql.runTask([task.id]);
+                $.msg($.name, "任务已触发", `执行: ${QL.taskName}`);
+            }
+        }
+
+    } catch (e) {
+        $.logErr(e);
+        $.msg($.name, "❌ 同步失败", e.message);
+    }
+}
+
+// Base64 解码兼容函数 (Node/Browser)
+function decodeBase64(str) {
+    // 补全 Base64 字符串
+    let pad = str.length % 4;
+    if (pad) {
+        if (pad === 1) throw new Error('InvalidLengthError:Input base64url string is the wrong length to determine padding');
+        str += new Array(5 - pad).join('=');
+    }
+    // Node.js 环境
+    if (typeof Buffer !== 'undefined') {
+        return Buffer.from(str, 'base64').toString('utf8');
+    }
+    // 浏览器/Loon/QX 环境 (使用内置 atob)
+    if (typeof atob !== 'undefined') {
+        return atob(str);
+    }
+    return "";
+}
+
+function ObjectKeys2LowerCase(e) {
+    return Object.fromEntries(Object.entries(e).map(([k, v]) => [k.toLowerCase(), v]));
+}
+
+!(async () => {
+    await main();
+})()
+.catch((e) => $.logErr(e))
+.finally(() => $.done());
+
+// ---------------------- 核心类与 Env 模块 (保持不变) -----------------------------------
+function QingLong(HOST, Client_ID, Client_Secret) {
+    const Request = (options, method = "GET") => {
+        return new Promise((resolve, reject) => {
+            options.headers = options.headers || {};
+            const callback = (err, resp, data) => {
+                if (err) return reject(new Error(err));
+                let body = data;
+                try {
+                    if (typeof data === 'string') { body = JSON.parse(data); }
+                } catch (e) {}
+                resolve({ statusCode: resp.status || resp.statusCode || 200, headers: resp.headers, body: body });
+            };
+            const m = method.toUpperCase();
+            if (m === 'GET') { $.get(options, callback); } 
+            else { options.method = m; $.post(options, callback); }
+        });
+    };
+    return new (class {
+        constructor(HOST, Client_ID, Client_Secret) {
+            this.host = HOST; this.clientId = Client_ID; this.clientSecret = Client_Secret; this.token = ""; this.envs = [];
+        }
+        async checkLogin() { await this.getAuthToken(); }
+        async getAuthToken() {
+            const options = { url: `${this.host}/open/auth/token?client_id=${this.clientId}&client_secret=${this.clientSecret}` };
+            const response = await Request(options, "GET");
+            if (response.body.code === 200) { this.token = `${response.body.data.token_type} ${response.body.data.token}`; } 
+            else { throw new Error(response.body.message || "无法获取青龙 Token"); }
+        }
+        async getEnvs() {
+            const options = { url: `${this.host}/open/envs`, headers: { 'Authorization': this.token } };
+            const response = await Request(options, "GET");
+            if (response.body.code === 200) { this.envs = response.body.data; }
+        }
+        async getTask(name) {
+            const options = { url: `${this.host}/open/crons?searchValue=${encodeURIComponent(name)}`, headers: { 'Authorization': this.token } };
+            const response = await Request(options, "GET");
+            if (response.body.code === 200 && response.body.data) {
+                const tasks = response.body.data.data || response.body.data;
+                if(Array.isArray(tasks)){ return tasks.find((item) => item.name === name || item.command.includes(name)); }
+            }
+            return null;
+        }
+        selectEnvByName(name) { return this.envs.filter((item) => item.name === name); }
+        async addEnv(array) {
+            const options = { url: `${this.host}/open/envs`, headers: { Authorization: this.token, "Content-Type": "application/json;charset=UTF-8" }, body: JSON.stringify(array) };
+            await Request(options, "POST");
+        }
+        async updateEnv(obj) {
+            const options = { url: `${this.host}/open/envs`, headers: { Authorization: this.token, "Content-Type": "application/json;charset=UTF-8" }, body: JSON.stringify(obj) };
+            await Request(options, "PUT");
+        }
+        async runTask(taskIds) {
+            const options = { url: `${this.host}/open/crons/run`, headers: { Authorization: this.token, "Content-Type": "application/json;charset=UTF-8" }, body: JSON.stringify(taskIds) };
+            await Request(options, "PUT");
+        }
+    })(HOST, Client_ID, Client_Secret);
+}
+
+function Env(t,e){"undefined"!=typeof process&&JSON.stringify(process.env).indexOf("GITHUB")>-1&&process.exit(0);class s{constructor(t){this.env=t}send(t,e="GET"){t="string"==typeof t?{url:t}:t;let s=this.get;return"POST"===e&&(s=this.post),new Promise((e,i)=>{s.call(this,t,(t,s,r)=>{t?i(t):e(s)})})}get(t){return this.send.call(this.env,t)}post(t){return this.send.call(this.env,t,"POST")}}return new class{constructor(t,e){this.name=t,this.http=new s(this),this.data=null,this.dataFile="box.dat",this.logs=[],this.isMute=!1,this.isNeedRewrite=!1,this.logSeparator="\n",this.startTime=(new Date).getTime(),Object.assign(this,e),this.log("",`🔔${this.name}, 开始!`)}isNode(){return"undefined"!=typeof module&&!!module.exports&&!!process}isQuanX(){return"undefined"!=typeof $task}isSurge(){return"undefined"!=typeof $httpClient&&"undefined"==typeof $loon}isLoon(){return"undefined"!=typeof $loon}toObj(t,e=null){try{return JSON.parse(t)}catch{return e}}toStr(t,e=null){try{return JSON.stringify(t)}catch{return e}}getjson(t,e){let s=e;const i=this.getdata(t);if(i)try{s=JSON.parse(this.getdata(t))}catch{}return s}setjson(t,e){try{return this.setdata(JSON.stringify(t),e)}catch{return!1}}getScript(t){return new Promise(e=>{this.get({url:t},(t,s,i)=>e(i))})}runScript(t,e){return new Promise(s=>{let i=this.getdata("@chavy_boxjs_userCfgs.httpapi");i=i?i.replace(/\n/g,"").trim():i;let r=this.getdata("@chavy_boxjs_userCfgs.httpapi_timeout");r=r?1*r:20,r=e&&e.timeout?e.timeout:r;const[o,h]=i.split("@"),n={url:`http://${h}/v1/scripting/evaluate`,body:{script_text:t,mock_type:"cron",timeout:r},headers:{"X-Key":o,Accept:"*/*"},timeout:r};this.post(n,(t,e,i)=>s(i))}).catch(t=>this.logErr(t))}loaddata(){if(!this.isNode())return{};{const t=require("fs"),e=require("path"),s=e.resolve(this.dataFile),i=e.resolve(process.cwd(),this.dataFile),r=t.existsSync(s),o=!r&&t.existsSync(i);if(!r&&!o)return{};{const e=r?s:i;try{return JSON.parse(t.readFileSync(e))}catch(t){return{}}}}}writedata(){if(this.isNode()){const t=require("fs"),e=require("path"),s=e.resolve(this.dataFile),i=e.resolve(process.cwd(),this.dataFile),r=t.existsSync(s),o=!r&&t.existsSync(i),h=JSON.stringify(this.data);r?t.writeFileSync(s,h):o?t.writeFileSync(i,h):t.writeFileSync(s,h)}}lodash_get(t,e,s){const i=e.replace(/\[(\d+)\]/g,".$1").split(".");let r=t;for(const t of i)if(r=Object(r)[t],void 0===r)return s;return r}lodash_set(t,e,s){return Object(t)!==t?t:(Array.isArray(e)||(e=e.toString().match(/[^.[\]]+/g)||[]),e.slice(0,-1).reduce((t,s,i)=>Object(t[s])===t[s]?t[s]:t[s]=Math.abs(e[i+1])>>0==+e[i+1]?[]:{},t)[e[e.length-1]]=s,t)}getdata(t){let e=this.getval(t);if(/^@/.test(t)){const[,s,i]=/^@(.*?)\.(.*?)$/.exec(t),r=s?this.getval(s):"";if(r)try{const t=JSON.parse(r);e=t?this.lodash_get(t,i,""):e}catch(t){e=""}}return e}setdata(t,e){let s=!1;if(/^@/.test(e)){const[,i,r]=/^@(.*?)\.(.*?)$/.exec(e),o=this.getval(i),h=i?"null"===o?null:o||"{}":"{}";try{const e=JSON.parse(h);this.lodash_set(e,r,t),s=this.setval(JSON.stringify(e),i)}catch(e){const o={};this.lodash_set(o,r,t),s=this.setval(JSON.stringify(o),i)}}else s=this.setval(t,e);return s}getval(t){return this.isNode()?this.data=this.loaddata()[t]:this.isSurge()?$persistentStore.read(t):this.isQuanX()?$prefs.valueForKey(t):this.isLoon()?$persistentStore.read(t):this.data&&this.data[t]||null}setval(t,e){return this.isNode()?(this.data=this.loaddata(),this.data[e]=t,this.writedata(),!0):this.isSurge()?$persistentStore.write(t,e):this.isQuanX()?$prefs.setValueForKey(t,e):this.isLoon()?$persistentStore.write(t,e):this.data&&this.data[e]||null}initGotEnv(t){this.got=this.got?this.got:require("got"),this.cktough=this.cktough?this.cktough:require("tough-cookie"),this.ckjar=this.ckjar?this.ckjar:new this.cktough.CookieJar,t&&(t.headers=t.headers?t.headers:{},void 0===t.headers.Cookie&&void 0===t.cookieJar&&(t.cookieJar=this.ckjar))}get(t,e=(()=>{})){t.headers&&(delete t.headers["Content-Type"],delete t.headers["Content-Length"]),this.isSurge()||this.isLoon()?(this.isSurge()&&this.isNeedRewrite&&(t.headers=t.headers||{},Object.assign(t.headers,{"X-Surge-Skip-Scripting":!1})),$httpClient.get(t,(t,s,i)=>{!t&&s&&(s.body=i,s.statusCode=s.status),e(t,s,i)})):this.isQuanX()?(this.isNeedRewrite&&(t.opts=t.opts||{},Object.assign(t.opts,{hints:!1})),$task.fetch(t).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>e(t))):this.isNode()&&(this.initGotEnv(t),this.got(t).on("redirect",(t,e)=>{try{if(t.headers["set-cookie"]){const s=t.headers["set-cookie"].map(this.cktough.Cookie.parse).toString();s&&this.ckjar.setCookieSync(s,null),e.cookieJar=this.ckjar}}catch(t){this.logErr(t)}}).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>{const{message:s,response:i}=t;e(s,i,i&&i.body)}))}post(t,e=(()=>{})){if(t.body&&t.headers&&!t.headers["Content-Type"]&&(t.headers["Content-Type"]="application/x-www-form-urlencoded"),t.headers&&delete t.headers["Content-Length"],this.isSurge()||this.isLoon())this.isSurge()&&this.isNeedRewrite&&(t.headers=t.headers||{},Object.assign(t.headers,{"X-Surge-Skip-Scripting":!1})),$httpClient.post(t,(t,s,i)=>{!t&&s&&(s.body=i,s.statusCode=s.status),e(t,s,i)});else if(this.isQuanX())t.method="POST",this.isNeedRewrite&&(t.opts=t.opts||{},Object.assign(t.opts,{hints:!1})),$task.fetch(t).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>e(t));else if(this.isNode()){this.initGotEnv(t);const{url:s,...i}=t;this.got.post(s,i).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>{const{message:s,response:i}=t;e(s,i,i&&i.body)})}}time(t,e=null){const s=e?new Date(e):new Date;let i={"M+":s.getMonth()+1,"d+":s.getDate(),"H+":s.getHours(),"m+":s.getMinutes(),"s+":s.getSeconds(),"q+":Math.floor((s.getMonth()+3)/3),S:s.getMilliseconds()};/(y+)/.test(t)&&(t=t.replace(RegExp.$1,(s.getFullYear()+"").substr(4-RegExp.$1.length)));for(let e in i)new RegExp("("+e+")").test(t)&&(t=t.replace(RegExp.$1,1==RegExp.$1.length?i[e]:("00"+i[e]).substr((""+i[e]).length)));return t}msg(e=t,s="",i="",r){const o=t=>{if(!t)return t;if("string"==typeof t)return this.isLoon()?t:this.isQuanX()?{"open-url":t}:this.isSurge()?{url:t}:void 0;if("object"==typeof t){if(this.isLoon()){let e=t.openUrl||t.url||t["open-url"],s=t.mediaUrl||t["media-url"];return{openUrl:e,mediaUrl:s}}if(this.isQuanX()){let e=t["open-url"]||t.url||t.openUrl,s=t["media-url"]||t.mediaUrl;return{"open-url":e,"media-url":s}}if(this.isSurge()){let e=t.url||t.openUrl||t["open-url"];return{url:e}}}};if(this.isMute||(this.isSurge()||this.isLoon()?$notification.post(e,s,i,o(r)):this.isQuanX()&&$notify(e,s,i,o(r))),!this.isMuteLog){let t=["","==============📣系统通知📣=============="];t.push(e),s&&t.push(s),i&&t.push(i),console.log(t.join("\n")),this.logs=this.logs.concat(t)}}log(...t){t.length>0&&(this.logs=[...this.logs,...t]),console.log(t.join(this.logSeparator))}logErr(t,e){const s=!this.isSurge()&&!this.isQuanX()&&!this.isLoon();s?this.log("",`❗️${this.name}, 错误!`,t.stack):this.log("",`❗️${this.name}, 错误!`,t)}wait(t){return new Promise(e=>setTimeout(e,t))}done(t={}){const e=(new Date).getTime(),s=(e-this.startTime)/1e3;this.log("",`🔔${this.name}, 结束! 🕛 ${s} 秒`),this.log(),(this.isSurge()||this.isQuanX()||this.isLoon())&&$done(t)}}(t,e)}
