@@ -8,8 +8,14 @@
 # 匹配 judgeLogin 接口
 ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/jingjiu_sync_ql.js
 
+[MITM]
+hostname = jjw.jingjiu.com
+
 [Script]
 http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/jingjiu_sync_ql.js, tag=劲酒同步青龙, enable=true
+
+[MITM]
+hostname = jjw.jingjiu.com
 
 ---------------------------
 BoxJs 全局变量配置 (Key: jyj_QL):
