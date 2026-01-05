@@ -25,7 +25,7 @@ BoxJs 全局变量配置 (Key: jyj_QL):
   "host": "http://192.168.1.93:5700",
   "clientId": "7MRlItXTD-cR",
   "secret": "kB7DIXTCw-3Ons8Ai7onrivl",
-  "envName": "jyj_data",
+  "envName": "JYJ",
   "taskName": "jyj.js",
   "autoRunTask": true
 }
@@ -51,34 +51,9 @@ async function getAuthorization() {
     // 清洗数据：去除 "Authorization: " 前缀
     const token = rawAuth.replace(/^Authorization:\s*/i, "");
     
-    // 简单的日志摘要
-    $.log(`🔍 捕获 Token (尾号): ...${token.slice(-6)}`);
-    
+    // 日志显示 Token 末尾方便调试
+    $.log(`🔍 捕获 Token: ...${token.slice(-10)}`);
     return token;
-}
-
-// JWT 解码辅助函数：提取唯一标识作为备注
-function getRemarkFromToken(token) {
-    try {
-        const parts = token.split('.');
-        if (parts.length !== 3) return "未知账号";
-        
-        // Base64 解码 payload
-        const payloadStr = decodeBase64(parts[1]);
-        const payload = JSON.parse(payloadStr);
-        
-        // 劲酒 Token 的 payload 里通常有个 "JYJwx " 字段存放 UUID
-        // 格式示例: {"JYJwx ": "4dce451a-4689-47a2-943b-7bc422c11873"}
-        const uuid = payload["JYJwx "] || payload["sub"] || "Unknown";
-        
-        // 截取最后 4 位作为简短标识
-        if (uuid.length > 4) {
-            return `账号[${uuid.slice(-4)}]`;
-        }
-        return uuid;
-    } catch (e) {
-        return "新账号";
-    }
 }
 
 async function main() {
@@ -104,52 +79,56 @@ async function main() {
         
         let targetEnv = envs[0]; 
         let finalValue = "";
-        let finalRemark = "";
+        let newRemark = "";
 
         if (targetEnv) {
-            // --- 场景 A: 变量已存在，执行精准去重与合并 ---
+            // --- 场景 A: 变量已存在 ---
             const oldVal = targetEnv.value;
-            // 使用 # 分割成数组，进行精准比对
-            let tokens = oldVal.split('#').filter(t => t && t.length > 10); // 过滤空值或过短的垃圾数据
             
-            // 检查新 Token 是否已完全存在于数组中
-            if (tokens.includes(newToken)) {
-                $.log(`⚠️ Token 精准匹配已存在，跳过更新`);
+            // 1. 分割旧数据 (以 # 分割，过滤空行)
+            let items = oldVal.split('#').filter(t => t && t.length > 10);
+            
+            // 2. 提取纯 Token 用于比对 (去掉 & 后面的备注)
+            const existTokens = items.map(item => item.split('&')[0]);
+            
+            // 3. 检查是否重复
+            if (existTokens.includes(newToken)) {
+                $.log(`⚠️ Token 已存在，跳过更新`);
                 return; 
             }
 
-            // 追加新 Token
-            $.log(`➕ 新 Token，正在追加...`);
-            tokens.push(newToken);
-            finalValue = tokens.join('#');
-            
-            // --- 生成智能备注 ---
-            // 遍历所有 Token，生成类似 "账号[1873] & 账号[9999]" 的备注
-            const remarkList = tokens.map(t => getRemarkFromToken(t));
-            finalRemark = `自动同步: ${remarkList.join(' & ')}`;
+            // 4. 生成新序号 (当前总数 + 1)
+            const nextIndex = items.length + 1;
+            newRemark = `账号${nextIndex}`;
+            const newItem = `${newToken}&${newRemark}`;
 
+            // 5. 追加
+            $.log(`➕ 新增 ${newRemark}，正在追加...`);
+            items.push(newItem);
+            finalValue = items.join('#');
+            
             // 更新变量
             await ql.updateEnv({ 
                 value: finalValue, 
                 name: QL.envName, 
                 id: targetEnv.id, 
-                remarks: finalRemark // 更新备注字段
+                remarks: `自动同步: 共 ${items.length} 个账号` 
             });
 
         } else {
             // --- 场景 B: 变量不存在，新建 ---
-            $.log(`🆕 变量不存在，正在创建...`);
-            finalValue = newToken;
-            finalRemark = `自动同步: ${getRemarkFromToken(newToken)}`;
+            $.log(`🆕 变量不存在，创建第一个账号...`);
+            newRemark = "账号1";
+            finalValue = `${newToken}&${newRemark}`;
             
             await ql.addEnv([{ 
                 value: finalValue, 
                 name: QL.envName, 
-                remarks: finalRemark 
+                remarks: `自动同步: 共 1 个账号` 
             }]);
         }
 
-        $.msg($.name, "🎉 同步成功", `备注已更新: ${finalRemark}`);
+        $.msg($.name, "🎉 同步成功", `已添加: ${newRemark}\n格式: Token&${newRemark}`);
 
         // --- 自动运行任务 ---
         if (QL.taskName && (QL.autoRunTask === true || QL.autoRunTask === "true")) {
@@ -164,25 +143,6 @@ async function main() {
         $.logErr(e);
         $.msg($.name, "❌ 同步失败", e.message);
     }
-}
-
-// Base64 解码兼容函数 (Node/Browser)
-function decodeBase64(str) {
-    // 补全 Base64 字符串
-    let pad = str.length % 4;
-    if (pad) {
-        if (pad === 1) throw new Error('InvalidLengthError:Input base64url string is the wrong length to determine padding');
-        str += new Array(5 - pad).join('=');
-    }
-    // Node.js 环境
-    if (typeof Buffer !== 'undefined') {
-        return Buffer.from(str, 'base64').toString('utf8');
-    }
-    // 浏览器/Loon/QX 环境 (使用内置 atob)
-    if (typeof atob !== 'undefined') {
-        return atob(str);
-    }
-    return "";
 }
 
 function ObjectKeys2LowerCase(e) {
