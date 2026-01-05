@@ -13,6 +13,9 @@
 # Loon
 http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/jyj.js, tag=劲酒Token, enable=true
 
+[MITM]
+hostname = jjw.jingjiu.com
+
 */
 
 const $ = new Env("劲酒Token获取");
