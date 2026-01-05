@@ -7,11 +7,17 @@
 3. 自动解码Token提取ID，更新青龙备注（例如：账号[1873]）。
 
 [rewrite_local]
-^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/xxx/jingjiu_sync_ql.js
+# 匹配 judgeLogin 接口
+^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js
+
+[MITM]
+hostname = jjw.jingjiu.com
 
 [Script]
-http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/xxx/jingjiu_sync_ql.js, tag=劲酒同步青龙, enable=true
+http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js, tag=劲酒同步青龙, enable=true
 
+[MITM]
+hostname = jjw.jingjiu.com
 */
 
 const $ = new Env("劲酒Token同步青龙");
