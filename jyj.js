@@ -9,6 +9,9 @@
 # Quantumult X
 ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/jyj.js
 
+[MITM]
+hostname = jjw.jingjiu.com
+
 [Script]
 # Loon
 http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/jyj.js, tag=劲酒Token, enable=true
