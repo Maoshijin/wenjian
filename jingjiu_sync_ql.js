@@ -6,10 +6,10 @@
 
 [rewrite_local]
 # 匹配 judgeLogin 接口
-^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/xxx/jingjiu_sync_ql.js
+^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/jingjiu_sync_ql.js
 
 [Script]
-http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/xxx/jingjiu_sync_ql.js, tag=劲酒同步青龙, enable=true
+http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/jingjiu_sync_ql.js, tag=劲酒同步青龙, enable=true
 
 ---------------------------
 BoxJs 全局变量配置 (Key: jyj_QL):
