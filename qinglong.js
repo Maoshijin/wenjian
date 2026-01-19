@@ -7,8 +7,8 @@
 3. 自动解码Token提取ID，更新青龙备注（例如：账号[1873]）。
 
 [rewrite_local]
-# 匹配 judgeLogin 接口
-^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/Login url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js
+# 匹配 jjw.jingjiu.com 下的所有链接
+^https:\/\/jjw\.jingjiu\.com\/.* url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js
 
 [MITM]
 hostname = jjw.jingjiu.com
