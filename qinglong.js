@@ -8,13 +8,13 @@
 
 [rewrite_local]
 # 匹配 judgeLogin 接口
-^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js
+^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/Login url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js
 
 [MITM]
 hostname = jjw.jingjiu.com
 
 [Script]
-http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/judgeLogin script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js, tag=劲酒同步青龙, enable=true
+http-request ^https:\/\/jjw\.jingjiu\.com\/app-jingyoujia\/Login script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js, tag=劲酒同步青龙, enable=true
 
 [MITM]
 hostname = jjw.jingjiu.com
