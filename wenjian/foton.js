@@ -4,6 +4,17 @@
 更新时间：2026-01-19
 使用说明：屏蔽福田E家强制更新弹窗
 匹配URL：https://czyl.foton.com.cn/ehomes-new/homeManager/api/User/getVersion
+
+[rewrite_local]
+# QX 引用地址
+^https:\/\/czyl\.foton\.com\.cn\/ehomes-new\/homeManager\/api\/User\/getVersion url script-response-body https://raw.githubusercontent.com/Maoshijin/wenjian/main/wenjian/foton.js
+
+[Script]
+# Loon/Surge 脚本配置
+http-response ^https:\/\/czyl\.foton\.com\.cn\/ehomes-new\/homeManager\/api\/User\/getVersion script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/main/wenjian/foton.js, requires-body=true, tag=福田E家去更新
+
+[MITM]
+hostname = czyl.foton.com.cn
 */
 
 var body = $response.body;
