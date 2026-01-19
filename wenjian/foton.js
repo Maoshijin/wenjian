@@ -31,11 +31,11 @@ $done({body: JSON.stringify(obj)});
 
 [rewrite_local]
 # 福田E家去更新
-^https:\/\/czyl\.foton\.com\.cn\/ehomes-new\/homeManager\/api\/User\/getVersion url script-response-body foton.js
+^https:\/\/czyl\.foton\.com\.cn\/ehomes-new\/homeManager\/api\/User\/getVersion url script-response-body https://raw.githubusercontent.com/Maoshijin/wenjian/main/wenjian/foton.js
 
 [Script]
 # 福田E家去更新
-http-response ^https:\/\/czyl\.foton\.com\.cn\/ehomes-new\/homeManager\/api\/User\/getVersion script-path=foton.js, requires-body=true, tag=福田E家去更新
+http-response ^https:\/\/czyl\.foton\.com\.cn\/ehomes-new\/homeManager\/api\/User\/getVersion script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/main/wenjian/foton.js, requires-body=true, tag=福田E家去更新
 
 [MITM]
 hostname = czyl.foton.com.cn
