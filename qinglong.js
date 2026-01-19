@@ -22,7 +22,7 @@ hostname = jjw.jingjiu.com
 ---------------------------
 BoxJs 全局变量配置 (Key: jyj_QL):
 {
-  "host": "http://192.168.1.93:5700",
+  "host": "http://nas.maogg.dpdns.org:5700",
   "clientId": "7MRlItXTD-cR",
   "secret": "kB7DIXTCw-3Ons8Ai7onrivl",
   "envName": "JYJ",
