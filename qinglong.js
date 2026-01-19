@@ -1,72 +1,85 @@
 /*
-脚本名称：劲酒Token同步青龙 (智能备注+精准去重版)
-脚本作者：MM
+脚本名称：劲酒Token同步青龙 (修复版)
+脚本作者：MM (Modified)
 功能说明：
 1. 抓取劲酒Token并同步至青龙。
-2. 修复部分字符变动不更新的Bug（改为精准匹配）。
-3. 自动解码Token提取ID，更新青龙备注（例如：账号[1873]）。
-
-[rewrite_local]
-# 匹配 jjw.jingjiu.com 下的所有链接
-^https:\/\/jjw\.jingjiu\.com\/.* url script-request-header https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js
+2. 增加运行模式检测，防止误报。
+3. 支持 BoxJs 或 脚本内直接填写配置。
 
 [MITM]
 hostname = jjw.jingjiu.com
 
 [Script]
+# 注意：Loon 用户请务必将此条目放在 [Script] 下，并确保类型识别为 http-request
 http-request ^https:\/\/jjw\.jingjiu\.com\/.* script-path=https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/qinglong.js, tag=劲酒同步青龙, enable=true
-
-[MITM]
-hostname = jjw.jingjiu.com
-
----------------------------
-BoxJs 全局变量配置 (Key: jyj_QL):
-{
-  "host": "http://nas.maogg.dpdns.org:5700",
-  "clientId": "7MRlItXTD-cR",
-  "secret": "kB7DIXTCw-3Ons8Ai7onrivl",
-  "envName": "JYJ",
-  "taskName": "jyj.js",
-  "autoRunTask": true
-}
----------------------------
 
 */
 
 const $ = new Env("劲酒Token同步青龙");
 
-// 1. 获取 BoxJs 中的青龙配置
+// ============================================
+// 👇👇👇 如果你不用 BoxJs，请在这里直接填写 👇👇👇
+// ============================================
+const FORCE_QL_CONFIG = {
+    host: "",       // 例如: "http://192.168.1.2:5700"
+    clientId: "",   // 青龙 Client ID
+    secret: ""      // 青龙 Client Secret
+};
+// ============================================
+
+// 1. 获取配置 (优先读取 BoxJs，如果没有则读取上方填写的 FORCE_QL_CONFIG)
 let QL = ($.isNode() ? process.env.jyj_QL : $.getjson("jyj_QL")) || {};
+
+// 如果 BoxJs 没数据，且脚本内填了数据，则使用脚本内的数据
+if ((!QL.host || !QL.clientId) && FORCE_QL_CONFIG.host) {
+    console.log("⚠️ 检测到 BoxJs 未配置，使用脚本内置配置...");
+    QL = FORCE_QL_CONFIG;
+}
 
 // ---------------------- 主逻辑区 -----------------------------------
 
 async function getAuthorization() {
-    if (typeof $request === "undefined") return null;
+    // 关键修复：检测是否处于抓包模式
+    if (typeof $request === "undefined") {
+        $.log("❌ 错误：当前脚本未检测到网络请求对象 ($request)。");
+        $.log("👉 原因：脚本可能被当成了【定时任务(CRON)】运行，或者是在编辑器里手动点击了运行。");
+        $.log("👉 解决：请确保在 Loon 的 [Script] 或 [Rewrite] 中配置为 http-request，并进入小程序触发。");
+        return null;
+    }
     
     const headers = ObjectKeys2LowerCase($request.headers);
     const rawAuth = headers['authorization'];
     
-    if (!rawAuth) return null;
+    if (!rawAuth) {
+        $.log("⚠️ 请求头中未发现 Authorization 字段，跳过...");
+        return null;
+    }
 
     // 清洗数据
     const token = rawAuth.replace(/^Authorization:\s*/i, "");
-    // 去除可能存在的首尾空格
+    $.log(`✅ 成功捕获 Token (长度: ${token.length})`);
     return token.trim();
 }
 
 async function main() {
     try {
+        // 运行前自检
+        if (typeof $request === "undefined") {
+             $.msg($.name, "❌ 配置错误", "脚本运行在 CRON/手动模式，无法抓包。\n请去小程序内触发，或检查 MITM 配置。");
+             return; // 直接退出，不再执行后续逻辑
+        }
+
         // 校验配置
         QL = typeof QL === "string" ? JSON.parse(QL) : QL;
         if (!QL.host || !QL.clientId || !QL.secret) {
-            throw new Error(`⛔️ 请在 BoxJs 设置 QL 配置`);
+            throw new Error(`⛔️ 未找到青龙配置！请在 BoxJs 设置 [jyj_QL] 或在脚本代码头部填写。`);
         }
         
         // 强制变量名
         QL.envName = "JYJ"; 
 
         const newToken = await getAuthorization();
-        if (!newToken) return;
+        if (!newToken) return; // 没抓到 Token，静默退出
 
         // 初始化青龙连接
         const ql = new QingLong(QL.host, QL.clientId, QL.secret);
@@ -84,26 +97,27 @@ async function main() {
             // --- 场景 A: 变量已存在 (执行追加) ---
             const oldVal = targetEnv.value;
             
-            // 1. 纯粹以 # 分割，不含任何其他字符
-            let tokens = oldVal.split('#').filter(t => t && t.length > 20); // 简单过滤过短的非法字符
+            // 1. 纯粹以 # 分割
+            let tokens = oldVal.split('#').filter(t => t && t.length > 20);
             
             // 2. 检查是否重复
             if (tokens.includes(newToken)) {
                 $.log(`⚠️ Token 已存在，无需重复添加`);
+                $.msg($.name, "⚠️ 重复抓取", "此账号 Token 已在青龙面板中，无需更新。");
                 return; 
             }
 
-            // 3. 追加 (仅追加 Token)
+            // 3. 追加
             $.log(`➕ 新增账号，正在追加...`);
             tokens.push(newToken);
             finalValue = tokens.join('#');
             
-            // 4. 更新到青龙 (同时更新备注显示账号数量，不影响脚本运行)
+            // 4. 更新到青龙
             await ql.updateEnv({ 
                 value: finalValue, 
                 name: QL.envName, 
                 id: targetEnv.id, 
-                remarks: `自动同步: 共 ${tokens.length} 个账号` // 备注写在 remarks 字段，不影响 value
+                remarks: `自动同步: 共 ${tokens.length} 个账号`
             });
 
         } else {
@@ -121,11 +135,13 @@ async function main() {
         $.msg($.name, "🎉 同步成功", `当前共 ${finalValue.split('#').length} 个账号`);
 
         // --- 自动运行任务 ---
-        if (QL.taskName && (QL.autoRunTask === true || QL.autoRunTask === "true")) {
+        if (QL.taskName && (QL.autoRunTask === true || QL.autoRunTask === "true" || QL.autoRunTask === true)) {
             const task = await ql.getTask(QL.taskName);
             if (task) {
                 await ql.runTask([task.id]);
                 $.msg($.name, "任务已触发", `执行: ${QL.taskName}`);
+            } else {
+                $.log(`⚠️ 未找到任务: ${QL.taskName}，跳过运行`);
             }
         }
 
@@ -145,7 +161,7 @@ function ObjectKeys2LowerCase(e) {
 .catch((e) => $.logErr(e))
 .finally(() => $.done());
 
-// ---------------------- 核心类 (Loon PUT 修复版) -----------------------------------
+// ---------------------- 核心类 -----------------------------------
 function QingLong(HOST, Client_ID, Client_Secret) {
     const Request = (options, method = "GET") => {
         return new Promise((resolve, reject) => {
@@ -205,5 +221,5 @@ function QingLong(HOST, Client_ID, Client_Secret) {
     })(HOST, Client_ID, Client_Secret);
 }
 
-// ---------------------- Env 模块 (Loon 兼容版) -----------------------------------
+// ---------------------- Env 模块 -----------------------------------
 function Env(t,e){"undefined"!=typeof process&&JSON.stringify(process.env).indexOf("GITHUB")>-1&&process.exit(0);class s{constructor(t){this.env=t}send(t,e="GET"){t="string"==typeof t?{url:t}:t;let s=this.get;return"POST"===e&&(s=this.post),"PUT"===e&&(s=this.put),new Promise((e,i)=>{s.call(this,t,(t,s,r)=>{t?i(t):e(s)})})}get(t){return this.send.call(this.env,t)}post(t){return this.send.call(this.env,t,"POST")}put(t){return this.send.call(this.env,t,"PUT")}}return new class{constructor(t,e){this.name=t,this.http=new s(this),this.data=null,this.dataFile="box.dat",this.logs=[],this.isMute=!1,this.isNeedRewrite=!1,this.logSeparator="\n",this.startTime=(new Date).getTime(),Object.assign(this,e),this.log("",`🔔${this.name}, 开始!`)}isNode(){return"undefined"!=typeof module&&!!module.exports&&!!process}isQuanX(){return"undefined"!=typeof $task}isSurge(){return"undefined"!=typeof $httpClient&&"undefined"==typeof $loon}isLoon(){return"undefined"!=typeof $loon}toObj(t,e=null){try{return JSON.parse(t)}catch(e){return e}}toStr(t,e=null){try{return JSON.stringify(t)}catch(e){return e}}getjson(t,e){let s=e;const i=this.getdata(t);if(i)try{s=JSON.parse(this.getdata(t))}catch(e){}return s}setjson(t,e){try{return this.setdata(JSON.stringify(t),e)}catch(e){return!1}}getScript(t){return new Promise(e=>{this.get({url:t},(t,s,i)=>e(i))})}runScript(t,e){return new Promise(s=>{let i=this.getdata("@chavy_boxjs_userCfgs.httpapi");i=i?i.replace(/\n/g,"").trim():i;let r=this.getdata("@chavy_boxjs_userCfgs.httpapi_timeout");r=r?1*r:20,r=e&&e.timeout?e.timeout:r;const[o,h]=i.split("@"),n={url:`http://${h}/v1/scripting/evaluate`,body:{script_text:t,mock_type:"cron",timeout:r},headers:{"X-Key":o,Accept:"*/*"},timeout:r};this.post(n,(t,e,i)=>s(i))}).catch(t=>this.logErr(t))}loaddata(){if(!this.isNode())return{};{const t=require("fs"),e=require("path"),s=e.resolve(this.dataFile),i=e.resolve(process.cwd(),this.dataFile),r=t.existsSync(s),o=!r&&t.existsSync(i);if(!r&&!o)return{};{const e=r?s:i;try{return JSON.parse(t.readFileSync(e))}catch(t){return{}}}}}writedata(){if(this.isNode()){const t=require("fs"),e=require("path"),s=e.resolve(this.dataFile),i=e.resolve(process.cwd(),this.dataFile),r=t.existsSync(s),o=!r&&t.existsSync(i),h=JSON.stringify(this.data);r?t.writeFileSync(s,h):o?t.writeFileSync(i,h):t.writeFileSync(s,h)}}lodash_get(t,e,s){const i=e.replace(/\[(\d+)\]/g,".$1").split(".");let r=t;for(const t of i)if(r=Object(r)[t],void 0===r)return s;return r}lodash_set(t,e,s){return Object(t)!==t?t:(Array.isArray(e)||(e=e.toString().match(/[^.[\]]+/g)||[]),e.slice(0,-1).reduce((t,s,i)=>Object(t[s])===t[s]?t[s]:t[s]=Math.abs(e[i+1])>>0==+e[i+1]?[]:{},t)[e[e.length-1]]=s,t)}getdata(t){let e=this.getval(t);if(/^@/.test(t)){const[,s,i]=/^@(.*?)\.(.*?)$/.exec(t),r=s?this.getval(s):"";if(r)try{const t=JSON.parse(r);e=t?this.lodash_get(t,i,""):e}catch(t){e=""}}return e}setdata(t,e){let s=!1;if(/^@/.test(e)){const[,i,r]=/^@(.*?)\.(.*?)$/.exec(e),o=this.getval(i),h=i?"null"===o?null:o||"{}":"{}";try{const e=JSON.parse(h);this.lodash_set(e,r,t),s=this.setval(JSON.stringify(e),i)}catch(e){const o={};this.lodash_set(o,r,t),s=this.setval(JSON.stringify(o),i)}}else s=this.setval(t,e);return s}getval(t){return this.isNode()?this.data=this.loaddata()[t]:this.isSurge()?$persistentStore.read(t):this.isQuanX()?$prefs.valueForKey(t):this.isLoon()?$persistentStore.read(t):this.data&&this.data[t]||null}setval(t,e){return this.isNode()?(this.data=this.loaddata(),this.data[e]=t,this.writedata(),!0):this.isSurge()?$persistentStore.write(t,e):this.isQuanX()?$prefs.setValueForKey(t,e):this.isLoon()?$persistentStore.write(t,e):this.data&&this.data[e]||null}initGotEnv(t){this.got=this.got?this.got:require("got"),this.cktough=this.cktough?this.cktough:require("tough-cookie"),this.ckjar=this.ckjar?this.ckjar:new this.cktough.CookieJar,t&&(t.headers=t.headers?t.headers:{},void 0===t.headers.Cookie&&void 0===t.cookieJar&&(t.cookieJar=this.ckjar))}get(t,e=(()=>{})){t.headers&&(delete t.headers["Content-Type"],delete t.headers["Content-Length"]),this.isSurge()||this.isLoon()?(this.isSurge()&&this.isNeedRewrite&&(t.headers=t.headers||{},Object.assign(t.headers,{"X-Surge-Skip-Scripting":!1})),$httpClient.get(t,(t,s,i)=>{!t&&s&&(s.body=i,s.statusCode=s.status),e(t,s,i)})):this.isQuanX()?(this.isNeedRewrite&&(t.opts=t.opts||{},Object.assign(t.opts,{hints:!1})),$task.fetch(t).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>e(t))):this.isNode()&&(this.initGotEnv(t),this.got(t).on("redirect",(t,e)=>{try{if(t.headers["set-cookie"]){const s=t.headers["set-cookie"].map(this.cktough.Cookie.parse).toString();s&&this.ckjar.setCookieSync(s,null),e.cookieJar=this.ckjar}}catch(t){this.logErr(t)}}).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>{const{message:s,response:i}=t;e(s,i,i&&i.body)}))}post(t,e=(()=>{})){if(t.body&&t.headers&&!t.headers["Content-Type"]&&(t.headers["Content-Type"]="application/x-www-form-urlencoded"),t.headers&&delete t.headers["Content-Length"],this.isSurge()||this.isLoon())this.isSurge()&&this.isNeedRewrite&&(t.headers=t.headers||{},Object.assign(t.headers,{"X-Surge-Skip-Scripting":!1})),$httpClient.post(t,(t,s,i)=>{!t&&s&&(s.body=i,s.statusCode=s.status),e(t,s,i)});else if(this.isQuanX())t.method="POST",this.isNeedRewrite&&(t.opts=t.opts||{},Object.assign(t.opts,{hints:!1})),$task.fetch(t).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>e(t));else if(this.isNode()){this.initGotEnv(t);const{url:s,...i}=t;this.got.post(s,i).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>{const{message:s,response:i}=t;e(s,i,i&&i.body)})}}put(t,e=(()=>{})){if(t.body&&t.headers&&!t.headers["Content-Type"]&&(t.headers["Content-Type"]="application/x-www-form-urlencoded"),t.headers&&delete t.headers["Content-Length"],this.isSurge()||this.isLoon())this.isSurge()&&this.isNeedRewrite&&(t.headers=t.headers||{},Object.assign(t.headers,{"X-Surge-Skip-Scripting":!1})),$httpClient.put(t,(t,s,i)=>{!t&&s&&(s.body=i,s.statusCode=s.status),e(t,s,i)});else if(this.isQuanX())t.method="PUT",this.isNeedRewrite&&(t.opts=t.opts||{},Object.assign(t.opts,{hints:!1})),$task.fetch(t).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>e(t));else if(this.isNode()){this.initGotEnv(t);const{url:s,...i}=t;this.got.put(s,i).then(t=>{const{statusCode:s,statusCode:i,headers:r,body:o}=t;e(null,{status:s,statusCode:i,headers:r,body:o},o)},t=>{const{message:s,response:i}=t;e(s,i,i&&i.body)})}}time(t,e=null){const s=e?new Date(e):new Date;let i={"M+":s.getMonth()+1,"d+":s.getDate(),"H+":s.getHours(),"m+":s.getMinutes(),"s+":s.getSeconds(),"q+":Math.floor((s.getMonth()+3)/3),S:s.getMilliseconds()};/(y+)/.test(t)&&(t=t.replace(RegExp.$1,(s.getFullYear()+"").substr(4-RegExp.$1.length)));for(let e in i)new RegExp("("+e+")").test(t)&&(t=t.replace(RegExp.$1,1==RegExp.$1.length?i[e]:("00"+i[e]).substr((""+i[e]).length)));return t}msg(e=t,s="",i="",r){const o=t=>{if(!t)return t;if("string"==typeof t)return this.isLoon()?t:this.isQuanX()?{"open-url":t}:this.isSurge()?{url:t}:void 0;if("object"==typeof t){if(this.isLoon()){let e=t.openUrl||t.url||t["open-url"],s=t.mediaUrl||t["media-url"];return{openUrl:e,mediaUrl:s}}if(this.isQuanX()){let e=t["open-url"]||t.url||t.openUrl,s=t["media-url"]||t.mediaUrl;return{"open-url":e,"media-url":s}}if(this.isSurge()){let e=t.url||t.openUrl||t["open-url"];return{url:e}}}};if(this.isMute||(this.isSurge()||this.isLoon()?$notification.post(e,s,i,o(r)):this.isQuanX()&&$notify(e,s,i,o(r))),!this.isMuteLog){let t=["","==============📣系统通知📣=============="];t.push(e),s&&t.push(s),i&&t.push(i),console.log(t.join("\n")),this.logs=this.logs.concat(t)}}log(...t){t.length>0&&(this.logs=[...this.logs,...t]),console.log(t.join(this.logSeparator))}logErr(t,e){const s=!this.isSurge()&&!this.isQuanX()&&!this.isLoon();s?this.log("",`❗️${this.name}, 错误!`,t.stack):this.log("",`❗️${this.name}, 错误!`,t)}wait(t){return new Promise(e=>setTimeout(e,t))}done(t={}){const e=(new Date).getTime(),s=(e-this.startTime)/1e3;this.log("",`🔔${this.name}, 结束! 🕛 ${s} 秒`),this.log(),(this.isSurge()||this.isQuanX()||this.isLoon())&&$done(t)}}(t,e)}
