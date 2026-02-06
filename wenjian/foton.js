@@ -23,33 +23,39 @@ hostname = czyl.foton.com.cn
 var body = $response.body;
 var url = $request.url;
 
-function nukeUpdate(obj) {
+// 递归遍历修改函数
+function antiUpdate(obj) {
     for (var key in obj) {
         if (typeof obj[key] === 'object' && obj[key] !== null) {
-            nukeUpdate(obj[key]); // 递归挖掘下一层
+            antiUpdate(obj[key]); // 往深处挖
         } else {
-            // 把键名转成小写，方便匹配
             var lowKey = key.toLowerCase();
             
-            // 1. 任何包含 'version' 的字段 -> 改为本地版本号 '1.0.0' 或 0
-            if (lowKey.indexOf('version') !== -1) {
-                // 如果原值是数字，改 0；如果是字符串，改 '1.0.0'
+            // 1. 遇到任何像“版本号”的字段 -> 改为 0 (越小越好)
+            // 逻辑：如果本地是 7.5.1，服务器是 0，那么 7.5.1 > 0，App就不会提示更新
+            if (lowKey.indexOf('version') !== -1 || lowKey.indexOf('code') !== -1) {
                 if (typeof obj[key] === 'number') {
-                    obj[key] = 99999; // 改成超级大，骗它是未来版本
-                } else {
-                    obj[key] = "99.9.9"; // 改成超级大
+                    obj[key] = 0; 
+                } else if (typeof obj[key] === 'string') {
+                    // 排除掉可能是校验码的长字符串，只改短的数字字符串
+                    if (obj[key].length < 10) { 
+                        obj[key] = "0";
+                    }
                 }
             }
             
-            // 2. 任何包含 'update' 的字段 -> 改为空或 false
-            if (lowKey.indexOf('update') !== -1) {
+            // 2. 遇到“强制”或“需要”更新的开关 -> 关掉
+            if (lowKey.indexOf('force') !== -1 || lowKey.indexOf('must') !== -1 || lowKey.indexOf('need') !== -1) {
+                if (typeof obj[key] === 'number') obj[key] = 0;
                 if (typeof obj[key] === 'boolean') obj[key] = false;
-                else obj[key] = "";
+                if (typeof obj[key] === 'string') obj[key] = "0";
             }
-
-            // 3. 特殊关键词打击
-            if (lowKey === 'force' || lowKey === 'must') {
-                obj[key] = 0;
+            
+            // 3. 破坏下载链接 -> 清空
+            if (lowKey.indexOf('url') !== -1 || lowKey.indexOf('down') !== -1) {
+                if (typeof obj[key] === 'string' && obj[key].includes('http')) {
+                    obj[key] = "";
+                }
             }
         }
     }
@@ -58,9 +64,18 @@ function nukeUpdate(obj) {
 if (body) {
     try {
         var obj = JSON.parse(body);
-        nukeUpdate(obj);
+        
+        // 执行修改
+        antiUpdate(obj);
+        
+        // 打印日志方便调试
+        if (url.indexOf("getLoginMember") !== -1) {
+            console.log("已处理福田登录接口，将版本号全部置为0");
+        }
+
         $done({body: JSON.stringify(obj)});
     } catch (e) {
+        console.log("福田脚本错误: " + e);
         $done({});
     }
 } else {
