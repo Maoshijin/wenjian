@@ -23,7 +23,7 @@ if (body) {
     try {
         var obj = JSON.parse(body);
         if (obj && obj.data) {
-            obj.data.appVersion = 0;
+            obj.data.appVersion = 7.6.3;
             obj.data.promptMaxVersionCode = "0";
             obj.data.allowMinVersionCode = "0";
             obj.data.version = "1.0.0";
