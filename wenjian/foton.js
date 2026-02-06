@@ -23,59 +23,47 @@ hostname = czyl.foton.com.cn
 var body = $response.body;
 var url = $request.url;
 
-// 递归遍历修改函数
-function antiUpdate(obj) {
-    for (var key in obj) {
-        if (typeof obj[key] === 'object' && obj[key] !== null) {
-            antiUpdate(obj[key]); // 往深处挖
-        } else {
-            var lowKey = key.toLowerCase();
-            
-            // 1. 遇到任何像“版本号”的字段 -> 改为 0 (越小越好)
-            // 逻辑：如果本地是 7.5.1，服务器是 0，那么 7.5.1 > 0，App就不会提示更新
-            if (lowKey.indexOf('version') !== -1 || lowKey.indexOf('code') !== -1) {
-                if (typeof obj[key] === 'number') {
-                    obj[key] = 0; 
-                } else if (typeof obj[key] === 'string') {
-                    // 排除掉可能是校验码的长字符串，只改短的数字字符串
-                    if (obj[key].length < 10) { 
-                        obj[key] = "0";
-                    }
-                }
-            }
-            
-            // 2. 遇到“强制”或“需要”更新的开关 -> 关掉
-            if (lowKey.indexOf('force') !== -1 || lowKey.indexOf('must') !== -1 || lowKey.indexOf('need') !== -1) {
-                if (typeof obj[key] === 'number') obj[key] = 0;
-                if (typeof obj[key] === 'boolean') obj[key] = false;
-                if (typeof obj[key] === 'string') obj[key] = "0";
-            }
-            
-            // 3. 破坏下载链接 -> 清空
-            if (lowKey.indexOf('url') !== -1 || lowKey.indexOf('down') !== -1) {
-                if (typeof obj[key] === 'string' && obj[key].includes('http')) {
-                    obj[key] = "";
-                }
-            }
-        }
-    }
-}
-
 if (body) {
     try {
         var obj = JSON.parse(body);
-        
-        // 执行修改
-        antiUpdate(obj);
-        
-        // 打印日志方便调试
-        if (url.indexOf("getLoginMember") !== -1) {
-            console.log("已处理福田登录接口，将版本号全部置为0");
+
+        // --- 核心逻辑开始 ---
+
+        // 1. 针对您刚才抓到的 getVersion 接口 (数据直接在最外层)
+        // 只要看到 versionCode，直接改为 "0"，这样 7.5.1 > 0，就不会弹窗
+        if (obj.hasOwnProperty('versionCode')) {
+            obj.versionCode = "0";
         }
+        
+        // 把展示用的版本号也改小
+        if (obj.hasOwnProperty('version')) {
+            obj.version = "0.0.0";
+        }
+
+        // 2. 针对可能存在的嵌套结构 (以防万一登录接口也带货)
+        if (obj.data) {
+            // 递归清理函数：把 data 里的版本号也全干掉
+            var cleanData = function(data) {
+                if (data.versionCode) data.versionCode = "0";
+                if (data.version_code) data.version_code = "0";
+                if (data.appVersion) data.appVersion = 0;
+                if (data.promptMaxVersionCode) data.promptMaxVersionCode = "0";
+                if (data.appUpdateURL) data.appUpdateURL = "";
+            };
+            
+            cleanData(obj.data);
+            
+            // 如果 data 里还藏了一层 versionInfo
+            if (obj.data.versionInfo) {
+                cleanData(obj.data.versionInfo);
+            }
+        }
+
+        // --- 核心逻辑结束 ---
 
         $done({body: JSON.stringify(obj)});
     } catch (e) {
-        console.log("福田脚本错误: " + e);
+        console.log("福田脚本执行异常: " + e);
         $done({});
     }
 } else {
