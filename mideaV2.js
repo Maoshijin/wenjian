@@ -162,23 +162,57 @@ class UserInfo {
             $.error(`[${this.userName || this.userId}] 错误！${e}`);
         }
     }
-    //签到
+// 真正的每日签到 (新版)
     async signin() {
         try {
             const opts = {
-                url: "https://mvip.midea.cn/my/score/create_daily_score",
+                url: "https://weixin.midea.com/mscp_mscp/api/cms_api/activity-center-im-service/im-svr/im/game/page/sign",
+                type: "post",
+                dataType: "json",
+                headers: {
+                    ...this.headers,
+                    "Host": "weixin.midea.com",
+                    "appId": "QLZZ9Fr7w2to",
+                    "apiKey": "3660663068894a0d9fea574c2673f3c0",
+                    "ucAccessToken": this.token,
+                    "Content-Type": "application/json"
+                },
+                body: {
+                    "headParams": {
+                        "language": "CN",
+                        "originSystem": "MCSP",
+                        "timeZone": "",
+                        "userCode": "",
+                        "tenantCode": "",
+                        "userKey": "TEST_",
+                        "transactionId": ""
+                    },
+                    "pagination": null,
+                    "restParams": {
+                        "gameId": 28,             // 真实的每日签到ID
+                        "actvId": "401670810827462661", // 真实的活动ID
+                        "rootCode": "DJ",
+                        "appCode": "DJ_WX"
+                    }
+                }
             }
             let res = await this.fetch(opts);
-            try {
-                res = $.toObj(res?.replace(/\t|\n|\v|\r|\f/g, ''))
-            } catch (e) {
-                res = { errcode: 0 }
+            
+            // 解析真实的返回结果
+            let msg = res?.msg || "未知状态";
+            if (res?.data?.dailyRewardInfo) {
+                // 如果返回了奖励信息，提取奖品名字和数量
+                msg = `成功！获得 [${res.data.dailyRewardInfo.prizeName || '奖励'}] ${res.data.dailyRewardInfo.rewardAmount || ''}`;
+            } else if (msg.includes('上限') || msg.includes('已') || res?.code === "1000") {
+                msg = "今日已签到";
+            } else if (res?.code === "0" && !res?.data) {
+                msg = "签到成功(无额外奖励信息)";
             }
-            let codeInfo = { "0": "签到成功", "314": "今日已签到" }
-            $.info(`[${this.userName}] 签到: ${codeInfo[res?.errcode] || "签到失败，请检查ck是否过期"}`);
+            
+            $.info(`[${this.userName}] 签到: ${msg}`);
         } catch (e) {
             this.ckStatus = false;
-            $.error(`[${this.userName || this.userId}] 错误！${e}`);
+            $.error(`[${this.userName || this.userId}] 签到错误！${e}`);
         }
     }
     //查询用户信息
