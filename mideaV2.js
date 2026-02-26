@@ -15,9 +15,9 @@ cron 8 8,14 * * *  midea.js
 重写：小程序-早起打卡页面
 
 [rewrite_local]
-^https^https:\/\/(mcsp|cmms)\.midea\.com\/.*\/get(Pro)?MemberInfo.*  url script-response-body https://gist.githubusercontent.com/Sliverkiss/d8543714edccb2743579989a74437e06/raw/mideaV2.js
+^https^https:\/\/(mcsp|cmms)\.midea\.com\/.*\/get(Pro)?MemberInfo.*  url script-response-body https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/mideaV2.js
 
-https:\/\/m\.midea\.cn\/next\/userinfo\/(getuserinfo|weapplogin) url script-response-body https://gist.githubusercontent.com/Sliverkiss/d8543714edccb2743579989a74437e06/raw/mideaV2.js
+https:\/\/m\.midea\.cn\/next\/userinfo\/(getuserinfo|weapplogin) url script-response-body https://raw.githubusercontent.com/Maoshijin/wenjian/refs/heads/main/mideaV2.js
 
 [MITM]
 hostname = mcsp.midea.com, m.midea.cn, cmms.midea.com
