@@ -1,6 +1,6 @@
 // https://pac.itzmx.com
 
-var proxy = "PROXY 192.168.1.22:7222; DIRECT";
+var proxy = "PROXY 192.168.1.2:7222; DIRECT";
 
 
 var domains = {
